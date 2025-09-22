@@ -162,7 +162,7 @@ mod tests {
     }
     #[test]
     //For this test run a video or animation for see the changes
-    //This test captures every second for 5 seconds
+    //This test captures every second for 1 seconds
     fn capture_test_img() {
         let dpy_name = std::env::var("DISPLAY").unwrap_or(":1".to_string());
 
@@ -172,7 +172,7 @@ mod tests {
         let mut img1: Vec<u8> = Vec::new();
         let mut img2: Vec<u8> = Vec::new();
 
-        // Capture every second for 5 seconds
+        // Capture every second for 1 seconds
         for _i in 1..=2 {
             if _i == 1 {
                 let result1 = screen_info.capture(0, 0, 1000, 1000);
@@ -184,7 +184,7 @@ mod tests {
                 img2 = screen_info.mmap.iter().copied().collect();
             }
 
-            //sleep 5 seconds
+            //sleep 1 seconds
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
