@@ -1,6 +1,9 @@
-[package]
-name = "virdeskux"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "virdeskux-server",
+    "virdeskux-client",
+    "virdeskux-web",
+    "screenshot-lib",
+]
 
-[dependencies]
+[workspace.dependencies]
