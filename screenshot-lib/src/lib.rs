@@ -2,6 +2,9 @@ use anyhow::{Context, Result, anyhow};
 use memmap2::MmapMut;
 use tempfile::tempfile;
 use x11rb::connection::Connection;
+use x11rb::protocol::Event;
+use x11rb::protocol::damage;
+use x11rb::protocol::damage::ConnectionExt as DamageConnectionExt;
 use x11rb::protocol::shm as xshm;
 use x11rb::protocol::xproto::{ImageFormat, Screen};
 use x11rb::rust_connection::RustConnection;
@@ -21,10 +24,7 @@ impl ScreenInfo {
         let (conn, screen_num) = x11rb::connect(dpy_name).context("error X11 (DISPLAY)")?;
         let screen = &conn.setup().roots[screen_num];
         // Get screen dimensions
-        let (w, h) = (
-            screen.width_in_pixels,
-            screen.height_in_pixels,
-        );
+        let (w, h) = (screen.width_in_pixels, screen.height_in_pixels);
 
         // Check MIT-SHM version (need >= 1.2 for AttachFd)
         let ver = xshm::query_version(&conn)?.reply()?;
@@ -71,11 +71,10 @@ impl ScreenInfo {
     ///  y: i16 - Y coordinate of the top-left corner of the capture area
     ///  w: u16 - Width of the capture area
     ///  h: u16 - Height of the capture area
-    /// 
+    ///
     /// returns: Result<()> - Ok on success, Err on failure
     /// the image data is stored in self.mmap in RGBA format (4 bytes per pixel)
     fn capture(&mut self, x: i16, y: i16, w: u16, h: u16) -> Result<()> {
-
         if w > self.width || h > self.height {
             return Err(anyhow!("Capture dimensions exceed screen size"));
         }
@@ -94,6 +93,35 @@ impl ScreenInfo {
         )?
         .reply()?;
         self.conn.flush()?;
+        Ok(())
+    }
+
+    fn change(&mut self) ->  Result<()> {
+        let damage_id = self.conn.generate_id().context("failed to generate damage ID")?;
+        self.conn.damage_create(
+            damage_id,
+            self.screen.root,
+            damage::ReportLevel::DELTA_RECTANGLES,
+        )?;
+        self.conn.flush()?;
+        let mut i=0;
+        loop {
+            let event = self.conn.wait_for_event().context("failed to wait for event")?;
+            i += 1; if i > 10 { break; } // Avoid infinite loop in tests
+            match event {
+                Event::DamageNotify(ev) => {
+                    self.conn.damage_subtract(damage_id, x11rb::NONE, x11rb::NONE).context("failed to subtract damage")?;
+                    self.conn.flush().context("failed to flush connection")?;
+                    let area = ev.area;
+                    println!(
+                        "Área cambiada: {} x {} to {} x {} ",
+                        area.x, area.y, area.width, area.height
+                    );
+                }
+                _ => {}
+            }
+        }
+
         Ok(())
     }
 
@@ -227,15 +255,15 @@ mod tests {
         // Capture every second for 5 seconds
         for _i in 1..=2 {
             if _i == 1 {
-                let   result1 = screen_info.capture(0, 0, 1000, 1000);
-                assert!(result1.is_ok());      
+                let result1 = screen_info.capture(0, 0, 1000, 1000);
+                assert!(result1.is_ok());
                 img1 = screen_info.mmap.iter().copied().collect();
             } else {
                 let result2 = screen_info.capture(0, 0, 1000, 1000);
                 assert!(result2.is_ok());
                 img2 = screen_info.mmap.iter().copied().collect();
             }
-             
+
             //sleep 5 seconds
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
@@ -246,5 +274,14 @@ mod tests {
         println!("Number of different bytes between captures: {}", diff);
         assert!(diff > 0, "Both captures are identical, no changes detected");
         screen_info.cleanup().expect("Failed to cleanup ScreenInfo");
+    }
+
+        #[test]
+    fn capture_test_changed() {
+        let dpy_name = std::env::var("DISPLAY").unwrap_or(":1".to_string());
+
+        let mut screen_info =
+            ScreenInfo::new(Some(&dpy_name)).expect("Failed to create ScreenInfo");
+        let result = screen_info.change();
     }
 }
