@@ -283,5 +283,7 @@ mod tests {
         let mut screen_info =
             ScreenInfo::new(Some(&dpy_name)).expect("Failed to create ScreenInfo");
         let result = screen_info.change();
+        assert!(result.is_ok());
+        screen_info.cleanup().expect("Failed to cleanup ScreenInfo");
     }
 }
