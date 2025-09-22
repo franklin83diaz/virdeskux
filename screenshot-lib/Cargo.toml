@@ -4,4 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1"
 x11rb = { version = "0.13", features = ["shm", "damage"] }
+tempfile = "3"
+memmap2 = "0.9"
