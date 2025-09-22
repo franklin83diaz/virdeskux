@@ -8,8 +8,8 @@ use x11rb::rust_connection::RustConnection;
 
 struct ScreenInfo {
     screen: Screen,
-    height: u32,
-    width: u32,
+    height: u16,
+    width: u16,
     shmseg: u32,
     mmap: MmapMut,
     conn: RustConnection,
@@ -22,8 +22,8 @@ impl ScreenInfo {
         let screen = &conn.setup().roots[screen_num];
         // Get screen dimensions
         let (w, h) = (
-            screen.width_in_pixels as u32,
-            screen.height_in_pixels as u32,
+            screen.width_in_pixels,
+            screen.height_in_pixels,
         );
 
         // Check MIT-SHM version (need >= 1.2 for AttachFd)
@@ -64,14 +64,29 @@ impl ScreenInfo {
         })
     }
 
-    fn capture(&mut self) -> Result<()> {
+    /// Capture the screen into the mmap buffer
+    ///
+    /// parameters:
+    ///  x: i16 - X coordinate of the top-left corner of the capture area
+    ///  y: i16 - Y coordinate of the top-left corner of the capture area
+    ///  w: u16 - Width of the capture area
+    ///  h: u16 - Height of the capture area
+    /// 
+    /// returns: Result<()> - Ok on success, Err on failure
+    /// the image data is stored in self.mmap in RGBA format (4 bytes per pixel)
+    fn capture(&mut self, x: i16, y: i16, w: u16, h: u16) -> Result<()> {
+
+        if w > self.width || h > self.height {
+            return Err(anyhow!("Capture dimensions exceed screen size"));
+        }
+
         let _ = xshm::get_image(
             &self.conn,
             self.screen.root,
-            0,
-            0,
-            self.width as u16,
-            self.height as u16,
+            x,
+            y,
+            w,
+            h,
             !0,                           // plane_mask
             ImageFormat::Z_PIXMAP.into(), // <-- conv a u8
             self.shmseg,
@@ -188,7 +203,7 @@ mod tests {
         let t0 = std::time::Instant::now();
         //test 60 fps
         for _i in 0..60 {
-            result = screen_info.capture();
+            result = screen_info.capture(0, 0, 1000, 1000);
         }
         let duration = t0.elapsed();
         assert!(result.is_ok());
@@ -212,11 +227,11 @@ mod tests {
         // Capture every second for 5 seconds
         for _i in 1..=2 {
             if _i == 1 {
-                let   result1 = screen_info.capture();
+                let   result1 = screen_info.capture(0, 0, 1000, 1000);
                 assert!(result1.is_ok());      
                 img1 = screen_info.mmap.iter().copied().collect();
             } else {
-                let result2 = screen_info.capture();
+                let result2 = screen_info.capture(0, 0, 1000, 1000);
                 assert!(result2.is_ok());
                 img2 = screen_info.mmap.iter().copied().collect();
             }
